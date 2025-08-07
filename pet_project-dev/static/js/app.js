@@ -1,6 +1,33 @@
 document.addEventListener('DOMContentLoaded', function() {
+
+
+
     // Обработчик для кнопки "Выполнено"
     document.addEventListener('click', async function(e) {
+        if (e.target.closest('.start-btn')) {
+            e.preventDefault();
+            const btn = e.target.closest('.start-btn');
+            const taskId = btn.dataset.taskId;
+            const taskElement = document.getElementById(`task-${taskId}`);
+            
+            taskElement.classList.add('task-starting');
+            
+            try {
+                const response = await fetch(`/start/${taskId}`);
+                const data = await response.json();
+                
+                if (data.status === 'success') {
+                    taskElement.classList.add('task-deleting');
+                    setTimeout(() => {
+                        taskElement.remove();
+                    }, 400);
+                }
+            } catch (error) {
+                console.error('Error:', error);
+                taskElement.classList.remove('task-starting');
+            }
+        }
+
         if (e.target.closest('.complete-btn')) {
             e.preventDefault();
             const btn = e.target.closest('.complete-btn');

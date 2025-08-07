@@ -27,11 +27,16 @@ def get_moscow_time():
 class Todo(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     task = db.Column(db.String(100), nullable=False)
-    completed = db.Column(db.Boolean, default=False)
+    status = db.Column(db.String(20), default='new', nullable=False)  # 'new', 'active', 'completed'
     created_at = db.Column(db.DateTime, default=lambda: get_moscow_time(), nullable=False)
-    completed_at = db.Column(db.DateTime)
-    updated_at = db.Column(db.DateTime)  # Добавляем поле для времени изменения
+    started_at = db.Column(db.DateTime, default=lambda: get_moscow_time())  # Когда взяли в работу
+    #completed = db.Column(db.Boolean, default=False) # Отвечает за выполнение задачи
+    completed_at = db.Column(db.DateTime, default=lambda: get_moscow_time()) # Когда  завершено
+    updated_at = db.Column(db.DateTime, default=lambda: get_moscow_time())  # Добавляем поле для времени изменения
     is_edited = db.Column(db.Boolean, default=False)  # Флаг редактирования
+    
+    def __repr__(self):
+        return f'<Todo {self.id}: {self.task} ({self.status})>'
         
 
 def check_and_upgrade_db():
@@ -47,6 +52,13 @@ def check_and_upgrade_db():
         
         # Добавляем недостающие колонки
         with db.engine.connect() as conn:
+            if 'status' not in columns:
+                conn.execute(text("ALTER TABLE todo ADD COLUMN status VARCHAR(20) DEFAULT 'new'"))
+                conn.execute(text("UPDATE todo SET status = 'active' WHERE completed = 0"))
+                conn.execute(text("UPDATE todo SET status = 'completed' WHERE completed = 1"))
+                conn.execute(text("ALTER TABLE todo DROP COLUMN completed"))
+            if 'started_at' not in columns:
+                conn.execute(text("ALTER TABLE todo ADD COLUMN started_at DATETIME"))
             if 'updated_at' not in columns:
                 conn.execute(text('ALTER TABLE todo ADD COLUMN updated_at DATETIME'))
             if 'is_edited' not in columns:
@@ -56,23 +68,28 @@ def check_and_upgrade_db():
 @app.route("/")
 def index():
     return redirect(url_for("active_tasks"))    
-    
-@app.route("/active", methods=["GET", "POST"])
-def active_tasks():
+
+@app.route("/new")
+def new_tasks():
     if request.method == "POST":
         task = request.form.get("task")
         if task:
-            new_todo = Todo(task=task)
+            new_todo = Todo(task=task, status='new')
             db.session.add(new_todo)
             db.session.commit()
-        return redirect(url_for("active_tasks"))
+        return redirect(url_for("new_tasks"))
     
-    active = Todo.query.filter_by(completed=False).order_by(Todo.created_at.desc()).all()
+    new = Todo.query.filter_by(status='new').order_by(Todo.created_at.desc()).all()
+    return render_template("index.html", todos=new, active_tab='new')
+    
+@app.route("/active", methods=["GET", "POST"])
+def active_tasks():
+    active = Todo.query.filter_by(status='active').order_by(Todo.started_at.desc()).all()
     return render_template("index.html", todos=active, active_tab='active')
 
 @app.route("/completed", methods=["GET"])  # Убираем POST здесь
 def completed_tasks():
-    completed = Todo.query.filter_by(completed=True).order_by(Todo.completed_at.desc()).all()
+    completed = Todo.query.filter_by(status='completed').order_by(Todo.completed_at.desc()).all()
     return render_template("index.html", todos=completed, active_tab='completed')  
 
 @app.route('/complete/<int:id>')
@@ -87,6 +104,15 @@ def complete_task(id):
         'completed': True,
         'completed_at': todo.completed_at.strftime('%d.%m.%Y %H:%M')
     })
+
+@app.route("/start/<int:id>")
+def start_task(id):
+    todo = Todo.query.get_or_404(id)
+    if todo.status == 'new':
+        todo.status = 'active'
+        todo.started_at = get_moscow_time()
+        db.session.commit()
+    return jsonify({'status': 'success'})
 
 @app.route("/edit/<int:id>", methods=["GET", "POST"])
 def edit_task(id):

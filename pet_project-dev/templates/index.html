@@ -15,6 +15,13 @@
         <!-- Навигационные вкладки -->
         <ul class="nav nav-tabs">
             <li class="nav-item">
+                <a class="nav-link {{ 'active' if active_tab == 'new' }}" href="{{ url_for('new_tasks') }}">Новые
+                    {% if active_tab == 'new' and todos|length > 0 %}
+                        <span class="badge bg-primary rounded-pill">{{ todos|length }}</span>
+                    {% endif %}
+                </a>
+            </li>
+            <li class="nav-item">
                 <a class="nav-link {{ 'active' if active_tab == 'active' }}" href="{{ url_for('active_tasks') }}">Активные</a>
             </li>
             <li class="nav-item">
@@ -22,15 +29,15 @@
             </li>
         </ul>
 
-        <!-- Форма добавления (только для активных задач) -->
-        {% if active_tab == 'active' %}
-        <div class="add-task-form">
-            <form method="POST" action="{{ url_for('active_tasks') }}" class="row g-3">
+        <!-- Форма добавления (только для новых задач) -->
+        {% if active_tab == 'new' %}
+        <div class="add-task-form mt-3 mb-4">
+            <form method="POST" action="{{ url_for('active_tasks') }}" class="row g-2">
                 <div class="col-md-8">
-                    <input type="text" name="task" class="form-control" placeholder="Новая задача" required>
+                    <input type="text" name="task" class="form-control form-control-sm" placeholder="Введите новую задачу" required>
                 </div>
                 <div class="col-md-4">
-                    <button type="submit" class="btn btn-primary">Добавить</button>
+                    <button type="submit" class="btn btn-primary btn-sm w-100">Добавить задачу</button>
                 </div>
             </form>
         </div>
@@ -38,56 +45,77 @@
 
         <!-- Список задач -->
         <div class="list-group">
-            {% for todo in todos %}
-            <div class="list-group-item task-item {{ 'completed-task' if todo.completed }}" id="task-{{ todo.id }}">
-                <div class="task-content">
-                    {{ todo.task }}
-                    <small class="dates text-muted small">
-                        Создано: {{ todo.created_at|format_date }}
-                        {% if todo.completed %}
-                        | Завершено: {{ todo.completed_at|format_date }}
+            {% if todos %}
+                {% for todo in todos %}
+                <div class="list-group-item task-item status-{{ todo.status }}" id="task-{{ todo.id }}">
+                    <div class="task-content">
+                        <h6>{{ todo.task }}</h6>
+                        <div class="dates">
+                            <small>Создано: {{ todo.created_at|format_date }}</small>
+                            {% if todo.started_at %}
+                            <small> | Начато: {{ todo.started_at|format_date }}</small>
+                            {% endif %}
+                            {% if todo.completed_at %}
+                            <small> | Завершено: {{ todo.completed_at|format_date }}</small>
+                            {% endif %}
+                            {% if todo.is_edited %}
+                            <small> | Изменено: {{ todo.updated_at|format_date }}</small>
+                            {% endif %}
+                        </div>
+                    </div>
+                    <div class="task-actions">
+                        {% if todo.status == 'new' %}
+                        <button class="btn btn-sm btn-primary start-btn"
+                                data-task-id="{{ todo.id }}"
+                                title="Взять в работу">
+                            ⚡ В работу
+                        </button>
+                        
+                        {% elif todo.status == 'active' %}
+                        <button class="btn btn-sm btn-success complete-btn"
+                                data-task-id="{{ todo.id }}"
+                                title="Завершить">
+                            ✓ Готово
+                        </button>
+                        <button class="btn btn-sm btn-outline-primary edit-btn"
+                                data-task-id="{{ todo.id }}"
+                                title="Редактировать">
+                            ✏️
+                        </button>
+                        
+                        {% elif todo.status == 'completed' %}
+                        <button class="btn btn-sm btn-warning reactivate-btn"
+                                data-task-id="{{ todo.id }}"
+                                title="Вернуть в работу">
+                            ↩️ В работу
+                        </button>
                         {% endif %}
-                        {% if todo.is_edited %}
-                        | Изменено: {{ todo.updated_at|format_date }}
-                        {% endif %}
-                    </small>
+                        
+                        <button class="btn btn-sm btn-outline-danger delete-btn"
+                                data-task-id="{{ todo.id }}"
+                                title="Удалить">
+                            🗑️
+                        </button>
+                    </div>
                 </div>
-                <div class="task-actions">
-                    {% if todo.completed %}
-                    <button class="btn btn-sm btn-warning reactivate-btn"
-                            data-task-id="{{ todo.id }}"
-                            title="Вернуть в активные">
-                        ↩️
-                        </a>
-                    {% else %}
-                    <button class="btn btn-sm btn-success complete-btn"
-                            data-task-id="{{ todo.id }}"
-                            title="Завершить">
-                        ✓
-                    </button>                    
-                    <button class="btn btn-sm btn-outline-primary edit-btn"
-                            data-task-id="{{ todo.id }}"
-                            title="Редактировать">
-                            {% if todo.completed %}disabled style="opacity:0.5;pointer-events:none"{% endif %}
-                        ✏️
-                    </button>
-                    {% endif %}
-                    <button class="btn btn-sm btn-outline-danger delete-btn"
-                            data-task-id="{{ todo.id }}"
-                            title="Удалить">
-                        🗑️
-                    </button>
-                </div>
-            </div>
+                {% endfor %}
             {% else %}
-            <div class="alert alert-info">
-                {% if active_tab == 'active' %}
-                Нет активных задач. Добавьте новую!
-                {% else %}
-                Нет завершенных задач.
-                {% endif %}
-            </div>
-            {% endfor %}
+                <div class="empty-state text-center py-5">
+                    {% if active_tab == 'new' %}
+                    <i class="bi bi-inbox" style="font-size: 2rem; color: #6c757d;"></i>
+                    <h5 class="mt-3">Нет новых задач</h5>
+                    <p class="text-muted">Добавьте новую задачу с помощью формы выше</p>
+                    {% elif active_tab == 'active' %}
+                    <i class="bi bi-list-check" style="font-size: 2rem; color: #6c757d;"></i>
+                    <h5 class="mt-3">Нет задач в работе</h5>
+                    <p class="text-muted">Возьмите задачу в работу из списка "Новые"</p>
+                    {% else %}
+                    <i class="bi bi-check-circle" style="font-size: 2rem; color: #6c757d;"></i>
+                    <h5 class="mt-3">Нет завершенных задач</h5>
+                    <p class="text-muted">Завершите текущие задачи из списка "В работе"</p>
+                    {% endif %}
+                </div>
+            {% endif %}
         </div>
     </div>
 
