@@ -6,18 +6,7 @@
     <title>ToDo App</title>
     <!-- Подключаем Bootstrap CSS -->
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
-    <style>
-        .completed-task {
-            text-decoration: line-through;
-            color: #6c757d;
-        }
-        .tab-content {
-            padding: 20px 0;
-        }
-        .add-task-form {
-            margin-bottom: 20px;
-        }
-    </style>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/styles.css') }}">
 </head>
 <body>
     <div class="container mt-4">
@@ -26,7 +15,7 @@
         <!-- Навигационные вкладки -->
         <ul class="nav nav-tabs">
             <li class="nav-item">
-                <a class="nav-link {{ 'active' if active_tab == 'active' }}" href="{{ url_for('active_tasks') }}">В процессе</a>
+                <a class="nav-link {{ 'active' if active_tab == 'active' }}" href="{{ url_for('active_tasks') }}">Активные</a>
             </li>
             <li class="nav-item">
                 <a class="nav-link {{ 'active' if active_tab == 'completed' }}" href="{{ url_for('completed_tasks') }}">Завершенные</a>
@@ -50,23 +39,44 @@
         <!-- Список задач -->
         <div class="list-group">
             {% for todo in todos %}
-            <div class="list-group-item d-flex justify-content-between align-items-center {{ 'completed-task' if todo.completed }}">
-                <div>
+            <div class="list-group-item task-item {{ 'completed-task' if todo.completed }}" id="task-{{ todo.id }}">
+                <div class="task-content">
                     {{ todo.task }}
-                    <br>
-                    <small class="text-muted">
+                    <small class="dates text-muted small">
                         Создано: {{ todo.created_at|format_date }}
                         {% if todo.completed %}
                         | Завершено: {{ todo.completed_at|format_date }}
                         {% endif %}
+                        {% if todo.is_edited %}
+                        | Изменено: {{ todo.updated_at|format_date }}
+                        {% endif %}
                     </small>
                 </div>
-                <div class="btn-group">
-                    {% if not todo.completed %}
-                    <a href="{{ url_for('toggle', id=todo.id) }}" class="btn btn-sm btn-success">✓</a>
-                    <a href="{{ url_for('edit', id=todo.id) }}" class="btn btn-sm btn-outline-primary">✏️</a>
-                    {% endif %}                    
-                    <a href="{{ url_for('delete', id=todo.id) }}" class="btn btn-sm btn-outline-danger">🗑️</a>
+                <div class="task-actions">
+                    {% if todo.completed %}
+                    <button class="btn btn-sm btn-warning reactivate-btn"
+                            data-task-id="{{ todo.id }}"
+                            title="Вернуть в активные">
+                        ↩️
+                        </a>
+                    {% else %}
+                    <button class="btn btn-sm btn-success complete-btn"
+                            data-task-id="{{ todo.id }}"
+                            title="Завершить">
+                        ✓
+                    </button>                    
+                    <button class="btn btn-sm btn-outline-primary edit-btn"
+                            data-task-id="{{ todo.id }}"
+                            title="Редактировать">
+                            {% if todo.completed %}disabled style="opacity:0.5;pointer-events:none"{% endif %}
+                        ✏️
+                    </button>
+                    {% endif %}
+                    <button class="btn btn-sm btn-outline-danger delete-btn"
+                            data-task-id="{{ todo.id }}"
+                            title="Удалить">
+                        🗑️
+                    </button>
                 </div>
             </div>
             {% else %}
@@ -81,7 +91,23 @@
         </div>
     </div>
 
+    <div id="editModal" class="modal">
+        <div class="modal-content">
+            <span class="close">&times;</span>
+            <h3>Редактировать задачу</h3>
+            <form id="editForm">
+                <input type="hidden" id="editTaskId">
+                <div class="form-group">
+                    <label for="editTaskText">Текст задачи:</label>
+                    <textarea id="editTaskText" class="form-control" rows="3" required></textarea>
+                </div>
+                <button type="submit" class="btn btn-primary">Сохранить</button>
+            </form>
+        </div>
+    </div>
+
     <!-- Подключаем Bootstrap JS -->
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="{{ url_for('static', filename='js/app.js') }}"></script>
 </body>
 </html>

@@ -1,11 +1,10 @@
-from flask import Flask, request, redirect, url_for, render_template
+from flask import Flask, request, redirect, url_for, render_template, jsonify
 from flask_sqlalchemy import SQLAlchemy
 from sqlalchemy import text
 from datetime import datetime
 import os
-import sqlite3
 
-app = Flask(__name__)
+app = Flask(__name__, static_folder='static')
 db_path = os.path.abspath(os.path.join(os.path.dirname(__file__), 'todos.db'))
 app.config['SQLALCHEMY_DATABASE_URI'] = f'sqlite:///{db_path}'
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
@@ -31,50 +30,11 @@ class Todo(db.Model):
     completed = db.Column(db.Boolean, default=False)
     created_at = db.Column(db.DateTime, default=lambda: get_moscow_time(), nullable=False)
     completed_at = db.Column(db.DateTime)
-   
-    
-def migrate_db():
-    """Безопасная миграция базы данных"""
-    conn = sqlite3.connect(db_path)
-    cursor = conn.cursor()
-    
-    # Проверяем существующие колонки
-    cursor.execute("PRAGMA table_info(todo)")
-    columns = {column[1]: column for column in cursor.fetchall()}
-    
-    # Создаем временную таблицу с новой структурой
-    cursor.execute("""
-    CREATE TABLE IF NOT EXISTS todo_new (
-        id INTEGER PRIMARY KEY,
-        task TEXT NOT NULL,
-        completed BOOLEAN DEFAULT FALSE,
-        created_at DATETIME,
-        completed_at DATETIME
-    )
-    """)
-    
-    # Если старая таблица существует, переносим данные
-    if 'todo' in [t[0] for t in cursor.execute("SELECT name FROM sqlite_master WHERE type='table'").fetchall()]:
-        # Определяем какие колонки нужно копировать
-        old_columns = [c for c in ['id', 'task', 'completed'] if c in columns]
-        select_columns = ', '.join(old_columns)
-        #insert_columns = ', '.join(old_columns + ['created_at'])
+    updated_at = db.Column(db.DateTime)  # Добавляем поле для времени изменения
+    is_edited = db.Column(db.Boolean, default=False)  # Флаг редактирования
         
-        # Переносим данные
-        cursor.execute(f"""
-        INSERT INTO todo_new (id, task, completed, created_at)
-        SELECT {select_columns}, datetime('now') FROM todo
-        """)
-        
-        # Удаляем старую таблицу
-        cursor.execute("DROP TABLE todo")
-    
-    # Переименовываем новую таблицу
-    cursor.execute("ALTER TABLE todo_new RENAME TO todo")
-    conn.commit()
-    conn.close()
-        
-def check_db(): # Функция проверки базы данных на корректность
+
+def check_and_upgrade_db():
     with app.app_context():
         # Проверяем существование таблицы
         inspector = db.inspect(db.engine)
@@ -85,9 +45,13 @@ def check_db(): # Функция проверки базы данных на к�
         # Проверяем существование колонок
         columns = [c['name'] for c in inspector.get_columns('todo')]
         
-        if 'completed_at' not in columns:
-            with db.engine.begin() as connection:
-                connection.execute(text("ALTER TABLE todo ADD COLUMN completed_at DATETIME"))
+        # Добавляем недостающие колонки
+        with db.engine.connect() as conn:
+            if 'updated_at' not in columns:
+                conn.execute(text('ALTER TABLE todo ADD COLUMN updated_at DATETIME'))
+            if 'is_edited' not in columns:
+                conn.execute(text('ALTER TABLE todo ADD COLUMN is_edited BOOLEAN DEFAULT FALSE'))
+            conn.commit()
     
 @app.route("/")
 def index():
@@ -111,46 +75,72 @@ def completed_tasks():
     completed = Todo.query.filter_by(completed=True).order_by(Todo.completed_at.desc()).all()
     return render_template("index.html", todos=completed, active_tab='completed')  
 
+@app.route('/complete/<int:id>')
+def complete_task(id):
+    todo = Todo.query.get_or_404(id)
+    if not todo.completed:
+        todo.completed = True
+        todo.completed_at = get_moscow_time()
+        db.session.commit()
+    return jsonify({
+        'status': 'success',
+        'completed': True,
+        'completed_at': todo.completed_at.strftime('%d.%m.%Y %H:%M')
+    })
+
 @app.route("/edit/<int:id>", methods=["GET", "POST"])
 def edit_task(id):
     todo = Todo.query.get_or_404(id)
-    
-    # Запрещаем редактирование завершенных задач
-    if not todo:
-        return render_template("404.html"), 404
     if todo.completed:
-        return render_template("403.html"), 403
+        return jsonify({'status': 'error', 'message': 'Нельзя редактировать завершенную задачу'}), 403
     
-    if request.method == "POST":
-        todo.task = request.form.get("task")
+    new_task = request.form.get('task', '').strip()
+    if not new_task:
+        return jsonify({'status': 'error', 'message': 'Текст задачи не может быть пустым'}), 400
+        
+    if new_task != todo.task:
+        todo.task = new_task
+        now = get_moscow_time()
+        todo.updated_at = now
+        todo.is_edited = True
         db.session.commit()
-        return redirect(url_for("active_tasks"))
+        
+        return jsonify({
+            'status': 'success',
+            'updated_at': now.astimezone(ZoneInfo("Europe/Moscow")).strftime('%d.%m.%Y %H:%M'),
+            'is_edited': True,
+            'new_text': new_task
+        })
     
-    return render_template("edit.html", todo=todo)
+    return jsonify({'status': 'no_changes'})
 
 @app.route("/delete/<int:id>")
 def delete(id):
     todo = Todo.query.get(id)
     db.session.delete(todo)
     db.session.commit()
-    return redirect(url_for("index"))
-
-@app.route("/edit/<int:id>", methods=["GET", "POST"])
-def edit(id):
-    todo = Todo.query.get(id)
-    if request.method == "POST":
-        todo.task = request.form.get("task")
-        db.session.commit()
-        return redirect(url_for("index"))
-    return render_template("edit.html", todo=todo)
+    return jsonify({'status': 'success'})
 
 @app.route("/toggle/<int:id>")
 def toggle(id):
     todo = Todo.query.get_or_404(id)
-    todo.completed = not todo.completed
+    todo.completed = True
     todo.completed_at = get_moscow_time() if todo.completed else None
     db.session.commit()
-    return redirect(url_for("active_tasks" if not todo.completed else "completed_tasks"))
+    return jsonify({'status': 'success'})
+
+@app.route("/reactivate/<int:id>")
+def reactivate_task(id):
+    """Возвращает задачу в активные"""
+    todo = Todo.query.get_or_404(id)
+    if todo.completed:
+        todo.completed = False
+        todo.completed_at = None
+        db.session.commit()
+    return jsonify({
+        'status': 'success',
+        'completed': False
+    })
 
 @app.errorhandler(403)
 def forbidden_error(error):
@@ -168,5 +158,6 @@ def format_date_filter(dt, format='%d.%m.%Y %H:%M'):
 
 if __name__ == "__main__":
     with app.app_context():
+        check_and_upgrade_db()
         db.create_all()  # Дополнительная проверка при запуске
     app.run(host="0.0.0.0", port=5000, debug=True)
