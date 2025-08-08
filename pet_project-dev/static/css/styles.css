@@ -119,6 +119,14 @@ textarea.form-control {
     max-width: 500px;
     box-shadow: 0 4px 8px rgba(0,0,0,0.2);
 }
+.processing {
+    opacity: 0.7;
+    pointer-events: none;
+}
+.disappearing {
+    animation: fadeOut 0.3s forwards;
+}
+
 /* Стили статусов */
 .status-new {
     border-left: 4px solid #17a2b8;
@@ -299,4 +307,28 @@ position: relative;
     0% { transform: scale(1); }
     50% { transform: scale(1.05); }
     100% { transform: scale(1); }
+}
+@keyframes fadeOut {
+    to {
+        opacity: 0;
+        height: 0;
+        padding: 0;
+        margin: 0;
+        border: none;
+    }
+}
+
+.alert {
+    position: fixed;
+    top: 20px;
+    left: 50%;
+    transform: translateX(-50%);
+    padding: 10px 20px;
+    border-radius: 4px;
+    z-index: 1000;
+}
+
+.alert-error {
+    background-color: #f8d7da;
+    color: #721c24;
 }

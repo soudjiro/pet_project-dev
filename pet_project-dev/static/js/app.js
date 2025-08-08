@@ -1,7 +1,4 @@
 document.addEventListener('DOMContentLoaded', function() {
-
-
-
     // Обработчик для кнопки "Выполнено"
     document.addEventListener('click', async function(e) {
         if (e.target.closest('.start-btn')) {
@@ -51,35 +48,55 @@ document.addEventListener('DOMContentLoaded', function() {
             } catch (error) {
                 console.error('Error:', error);
                 taskElement.classList.remove('task-completing');
+                alert('Ошибка при завершении задачи');
             }
         }
         
         // Обработчик для кнопки "Вернуть в активные"
-        if (e.target.closest('.reactivate-btn')) {
-            e.preventDefault();
-            const btn = e.target.closest('.reactivate-btn');
-            const taskId = btn.dataset.taskId;
-            const taskElement = document.getElementById(`task-${taskId}`);
-            
-            // Добавляем анимацию
-            taskElement.classList.add('task-reactivate');
-            
-            try {
-                const response = await fetch(`/reactivate/${taskId}`);
-                const data = await response.json();
-                
-                if (data.status === 'success') {
-                    // Плавное удаление задачи из списка
-                    taskElement.classList.add('task-deleting');
-                    setTimeout(() => {
-                        taskElement.remove();
-                    }, 400);
-                }
-            } catch (error) {
-                console.error('Error:', error);
-                taskElement.classList.remove('task-reactivate');
+        const reactivateBtn = e.target.closest('.reactivate-btn');
+        if (!reactivateBtn) return;
+
+        e.preventDefault();
+        const taskId = reactivateBtn.dataset.taskId;
+        const taskElement = document.getElementById(`task-${taskId}`);
+
+        // Добавляем анимацию
+        taskElement.classList.add('processing');
+
+        try {
+        const response = await fetch(`/reactivate/${taskId}`, {
+            method: 'POST',
+            headers: {
+                'Accept': 'application/json',
+                'Content-Type': 'application/json'
             }
+        });
+        
+        if (!response.ok) {
+            throw new Error(`HTTP error! status: ${response.status}`);
         }
+        
+        const data = await response.json();
+        
+        if (data.status === 'success') {
+            // Плавное удаление задачи из списка
+            taskElement.classList.add('disappearing');
+            setTimeout(() => {
+                taskElement.remove();
+                updateTaskCounters(); // Функция для обновления счетчиков
+            }, 300);
+        } else {
+            showAlert(data.message || 'Произошла ошибка', 'error');
+        }
+    } catch (error) {
+        console.error('Ошибка:', error);
+        showAlert('Не удалось вернуть задачу в работу', 'error');
+    } finally {
+        taskElement.classList.remove('processing');
+    }
+        
+
+
         
         // Обработчик для кнопки удаления (остается без изменений)
         if (e.target.closest('.delete-btn')) {
@@ -133,6 +150,14 @@ document.addEventListener('DOMContentLoaded', function() {
         }
     }
 
+function showAlert(message, type = 'info') {
+    const alert = document.createElement('div');
+    alert.className = `alert alert-${type}`;
+    alert.textContent = message;
+    document.body.prepend(alert);
+    setTimeout(() => alert.remove(), 3000);
+}
+    
     // Обработка формы редактирования
 editForm.onsubmit = async function(e) {
     e.preventDefault();
@@ -264,11 +289,11 @@ editForm.onsubmit = async function(e) {
                     }
                 }, 300);
             })
-            .catch(error => {
-                console.error('Error:', error);
-                taskElement.classList.remove(`task-${action}`);
-                alert('Произошла ошибка. Пожалуйста, попробуйте снова.');
-            });
+            //.catch(error => {
+            //    console.error('Error:', error);
+            //    taskElement.classList.remove(`task-${action}`);
+            //    alert('Произошла ошибка. Пожалуйста, попробуйте снова111.');
+            //});
     }
 
     // Назначение обработчиков событий

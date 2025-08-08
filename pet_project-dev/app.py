@@ -2,13 +2,15 @@ from flask import Flask, request, redirect, url_for, render_template, jsonify
 from flask_sqlalchemy import SQLAlchemy
 from sqlalchemy import text
 from datetime import datetime
-import os
+import os, logging
 
 app = Flask(__name__, static_folder='static')
 db_path = os.path.abspath(os.path.join(os.path.dirname(__file__), 'todos.db'))
 app.config['SQLALCHEMY_DATABASE_URI'] = f'sqlite:///{db_path}'
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 db = SQLAlchemy(app)
+
+logging.basicConfig(level=logging.INFO)
 
 try:
     from zoneinfo import ZoneInfo  # Python 3.9+
@@ -25,18 +27,17 @@ def get_moscow_time():
         return datetime.now(pytz.timezone("Europe/Moscow"))
 
 class Todo(db.Model):
-    id = db.Column(db.Integer, primary_key=True)
-    task = db.Column(db.String(100), nullable=False)
+    id = db.Column(db.Integer, primary_key=True) # id задачи
+    task = db.Column(db.String(100), nullable=False) # описание задачи
     status = db.Column(db.String(20), default='new', nullable=False)  # 'new', 'active', 'completed'
-    created_at = db.Column(db.DateTime, default=lambda: get_moscow_time(), nullable=False)
-    started_at = db.Column(db.DateTime, default=lambda: get_moscow_time())  # Когда взяли в работу
-    #completed = db.Column(db.Boolean, default=False) # Отвечает за выполнение задачи
-    completed_at = db.Column(db.DateTime, default=lambda: get_moscow_time()) # Когда  завершено
-    updated_at = db.Column(db.DateTime, default=lambda: get_moscow_time())  # Добавляем поле для времени изменения
+    created_at = db.Column(db.DateTime, default=lambda: get_moscow_time(), nullable=False) # Поле когда задачу создали
+    started_at = db.Column(db.DateTime, default=lambda: get_moscow_time())  # Поле когда задачу взяли в работу
+    completed_at = db.Column(db.DateTime, default=lambda: get_moscow_time()) # Поле когда задача завершена
+    updated_at = db.Column(db.DateTime, default=lambda: get_moscow_time())  # Поле когда задачу отредактировали
     is_edited = db.Column(db.Boolean, default=False)  # Флаг редактирования
     
-    def __repr__(self):
-        return f'<Todo {self.id}: {self.task} ({self.status})>'
+    #def __repr__(self):
+    #    return f'<Todo {self.id}: {self.task} ({self.status})>'
         
 
 def check_and_upgrade_db():
@@ -49,6 +50,16 @@ def check_and_upgrade_db():
         
         # Проверяем существование колонок
         columns = [c['name'] for c in inspector.get_columns('todo')]
+        
+        print("Существующие колонки:", columns)
+        if 'completed' in columns:
+            print("ОШИБКА: Колонка 'completed' все еще существует")
+        
+        with db.engine.begin() as conn:
+            if 'completed' in columns:
+                conn.execute(text("ALTER TABLE todo DROP COLUMN completed"))
+            if 'status' not in columns:
+                conn.execute(text("ALTER TABLE todo ADD COLUMN status VARCHAR(20) DEFAULT 'new'"))
         
         # Добавляем недостающие колонки
         with db.engine.connect() as conn:
@@ -67,7 +78,7 @@ def check_and_upgrade_db():
     
 @app.route("/")
 def index():
-    return redirect(url_for("active_tasks"))    
+    return redirect(url_for("new_tasks"))    
 
 @app.route("/new")
 def new_tasks():
@@ -87,7 +98,7 @@ def active_tasks():
     active = Todo.query.filter_by(status='active').order_by(Todo.started_at.desc()).all()
     return render_template("index.html", todos=active, active_tab='active')
 
-@app.route("/completed", methods=["GET"])  # Убираем POST здесь
+@app.route("/completed", methods=["GET"])
 def completed_tasks():
     completed = Todo.query.filter_by(status='completed').order_by(Todo.completed_at.desc()).all()
     return render_template("index.html", todos=completed, active_tab='completed')  
@@ -95,15 +106,15 @@ def completed_tasks():
 @app.route('/complete/<int:id>')
 def complete_task(id):
     todo = Todo.query.get_or_404(id)
-    if not todo.completed:
-        todo.completed = True
+    if todo.status == 'active':
+        todo.status = 'completed'
         todo.completed_at = get_moscow_time()
         db.session.commit()
-    return jsonify({
-        'status': 'success',
-        'completed': True,
-        'completed_at': todo.completed_at.strftime('%d.%m.%Y %H:%M')
-    })
+        return jsonify({
+            'status': 'success',
+            'completed_at': todo.completed_at.strftime('%d.%m.%Y %H:%M')
+        })
+    return jsonify({'status': 'error', 'message': 'Можно завершать только активные задачи'}), 400
 
 @app.route("/start/<int:id>")
 def start_task(id):
@@ -155,26 +166,41 @@ def toggle(id):
     db.session.commit()
     return jsonify({'status': 'success'})
 
-@app.route("/reactivate/<int:id>")
+@app.route("/reactivate/<int:id>", methods=["POST"])  # Разрешаем только POST
 def reactivate_task(id):
-    """Возвращает задачу в активные"""
-    todo = Todo.query.get_or_404(id)
-    if todo.completed:
-        todo.completed = False
+    logging.info(f"Получен запрос на возврат задачи {id} в работу")
+    try:
+        todo = Todo.query.get_or_404(id)
+        
+        if todo.status != 'completed':
+            return jsonify({
+                'status': 'error',
+                'message': 'Только завершенные задачи можно вернуть в работу'
+            }), 400
+        
+        todo.status = 'active'
         todo.completed_at = None
         db.session.commit()
-    return jsonify({
-        'status': 'success',
-        'completed': False
-    })
+        
+        return jsonify({
+            'status': 'success',
+            'new_status': 'active',
+            'task_id': todo.id
+        })
+        
+    except Exception as e:
+        return jsonify({
+            'status': 'error',
+            'message': f'Ошибка сервера: {str(e)}'
+        }), 500
 
-@app.errorhandler(403)
-def forbidden_error(error):
-    return render_template('403.html'), 403
+#@app.errorhandler(403)
+#def forbidden_error(error):
+#    return render_template('403.html'), 403
 
-@app.errorhandler(404)
-def forbidden_error(error):
-    return render_template('404.html'), 404
+#@app.errorhandler(404)
+#def forbidden_error(error):
+#    return render_template('404.html'), 404
 
 @app.template_filter('format_date')
 def format_date_filter(dt, format='%d.%m.%Y %H:%M'):
@@ -185,5 +211,4 @@ def format_date_filter(dt, format='%d.%m.%Y %H:%M'):
 if __name__ == "__main__":
     with app.app_context():
         check_and_upgrade_db()
-        db.create_all()  # Дополнительная проверка при запуске
     app.run(host="0.0.0.0", port=5000, debug=True)
