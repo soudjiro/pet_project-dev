@@ -31,9 +31,9 @@ class Todo(db.Model):
     task = db.Column(db.String(100), nullable=False) # описание задачи
     status = db.Column(db.String(20), default='new', nullable=False)  # 'new', 'active', 'completed'
     created_at = db.Column(db.DateTime, default=lambda: get_moscow_time(), nullable=False) # Поле когда задачу создали
-    started_at = db.Column(db.DateTime, default=lambda: get_moscow_time())  # Поле когда задачу взяли в работу
-    completed_at = db.Column(db.DateTime, default=lambda: get_moscow_time()) # Поле когда задача завершена
-    updated_at = db.Column(db.DateTime, default=lambda: get_moscow_time())  # Поле когда задачу отредактировали
+    started_at = db.Column(db.DateTime)  # Поле когда задачу взяли в работу
+    completed_at = db.Column(db.DateTime) # Поле когда задача завершена
+    updated_at = db.Column(db.DateTime)  # Поле когда задачу отредактировали
     is_edited = db.Column(db.Boolean, default=False)  # Флаг редактирования
         
 
