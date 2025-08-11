@@ -35,9 +35,6 @@ class Todo(db.Model):
     completed_at = db.Column(db.DateTime, default=lambda: get_moscow_time()) # Поле когда задача завершена
     updated_at = db.Column(db.DateTime, default=lambda: get_moscow_time())  # Поле когда задачу отредактировали
     is_edited = db.Column(db.Boolean, default=False)  # Флаг редактирования
-    
-    #def __repr__(self):
-    #    return f'<Todo {self.id}: {self.task} ({self.status})>'
         
 
 def check_and_upgrade_db():
@@ -51,7 +48,6 @@ def check_and_upgrade_db():
         # Проверяем существование колонок
         columns = [c['name'] for c in inspector.get_columns('todo')]
         
-        print("Существующие колонки:", columns)
         if 'completed' in columns:
             print("ОШИБКА: Колонка 'completed' все еще существует")
         
@@ -80,15 +76,15 @@ def check_and_upgrade_db():
 def index():
     return redirect(url_for("new_tasks"))    
 
-@app.route("/new")
+@app.route("/new", methods=["GET", "POST"])
 def new_tasks():
     if request.method == "POST":
         task = request.form.get("task")
         if task:
-            new_todo = Todo(task=task, status='new')
+            new_todo = Todo(task=task, status='new', created_at=get_moscow_time())
             db.session.add(new_todo)
             db.session.commit()
-        return redirect(url_for("new_tasks"))
+        return redirect(url_for("new_tasks")) # Остаемся на той же вкладке
     
     new = Todo.query.filter_by(status='new').order_by(Todo.created_at.desc()).all()
     return render_template("index.html", todos=new, active_tab='new')
@@ -128,7 +124,7 @@ def start_task(id):
 @app.route("/edit/<int:id>", methods=["GET", "POST"])
 def edit_task(id):
     todo = Todo.query.get_or_404(id)
-    if todo.completed:
+    if todo.status == 'completed':
         return jsonify({'status': 'error', 'message': 'Нельзя редактировать завершенную задачу'}), 403
     
     new_task = request.form.get('task', '').strip()
@@ -144,7 +140,7 @@ def edit_task(id):
         
         return jsonify({
             'status': 'success',
-            'updated_at': now.astimezone(ZoneInfo("Europe/Moscow")).strftime('%d.%m.%Y %H:%M'),
+            'updated_at': now.strftime('%d.%m.%Y %H:%M'),
             'is_edited': True,
             'new_text': new_task
         })
@@ -161,8 +157,8 @@ def delete(id):
 @app.route("/toggle/<int:id>")
 def toggle(id):
     todo = Todo.query.get_or_404(id)
-    todo.completed = True
-    todo.completed_at = get_moscow_time() if todo.completed else None
+    todo.status = 'completed'
+    todo.completed_at = get_moscow_time()
     db.session.commit()
     return jsonify({'status': 'success'})
 
@@ -193,14 +189,6 @@ def reactivate_task(id):
             'status': 'error',
             'message': f'Ошибка сервера: {str(e)}'
         }), 500
-
-#@app.errorhandler(403)
-#def forbidden_error(error):
-#    return render_template('403.html'), 403
-
-#@app.errorhandler(404)
-#def forbidden_error(error):
-#    return render_template('404.html'), 404
 
 @app.template_filter('format_date')
 def format_date_filter(dt, format='%d.%m.%Y %H:%M'):

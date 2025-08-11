@@ -50,33 +50,10 @@
 .close:hover {
     color: #333;
 }
-.completed-task {
-    position: relative;
-    text-decoration: line-through;
-    color: #6c757d;
-}
-.completed-task::before {
-    content: "";
-    position: absolute;
-    left: 0;
-    top: 50%;
-    right: 0;
-    height: 1px;
-    background: #28a745;
-    transform: scaleX(0);
-    transform-origin: left;
-    animation: lineThrough 0.5s forwards;
-}
-.complete-animation {
-    animation: completePulse 0.5s ease-out;
-}
 .dates {
     font-size: 0.8em;
     color: #6c757d;
     margin-top: 4px;
-}
-.delete-animation {
-    animation: deleteShrink 0.4s forwards;
 }
 /* Стили для пустого состояния */
 .empty-state {
@@ -126,22 +103,6 @@ textarea.form-control {
 .disappearing {
     animation: fadeOut 0.3s forwards;
 }
-
-/* Стили статусов */
-.status-new {
-    border-left: 4px solid #17a2b8;
-    background-color: #f8f9fa;
-}
-
-.status-active {
-    border-left: 4px solid #007bff;
-    background-color: #e7f5ff;
-}
-
-.status-completed {
-    border-left: 4px solid #28a745;
-    background-color: #e6f7ea;
-}
 /* Кнопки */
 .start-btn {
     background-color: #17a2b8;
@@ -152,9 +113,6 @@ textarea.form-control {
     display: flex;
     gap: 6px;
     align-items: center;
-}
-.tab-content {
-    padding: 20px 0;
 }
 [title] {
     position: relative;
@@ -172,20 +130,6 @@ textarea.form-control {
     font-size: 12px;
     white-space: nowrap;
     z-index: 1;
-}
-.reactivate-animation {
-    animation: reactivatePulse 0.5s ease-out;
-}
-.task-starting {
-    animation: taskStarting 0.3s ease;
-}
-/* Анимация удаления */
-.task-deleting {
-    animation: taskDeleteAnimation 0.4s forwards;
-}
-@keyframes taskDeleteAnimation {
-    0% { opacity: 1; transform: scaleY(1); }
-    100% { opacity: 0; transform: scaleY(0); height: 0; padding: 0; margin: 0; border: none; }
 }
 .task-item {
     transition: all 0.3s ease;
@@ -225,88 +169,13 @@ textarea.form-control {
     padding-bottom: 0;
     margin-bottom: 0;
     transition: all 0.3s ease;
-}
-.task-fade {
-    transition: all 0.4s ease-in-out;
-}        
-.task-completing {
-    animation: taskCompleteAnimation 0.3s ease-out;
-    transform: translateX(20px);
-    opacity: 0.5;
-    background-color: #f8f9fa;
-}        
-.task-activating {
-    transform: translateX(-20px);
-    opacity: 0.5;
-    background-color: #fff3cd;
-}
-.task-reactivate {
-    animation: taskReactivateAnimation 0.3s ease-out;
-}
-.status-change {
-position: relative;
-}        
-.status-change::after {
-    content: "";
-    position: absolute;
-    top: 0;
-    left: 0;
-    right: 0;
-    bottom: 0;
-    background: linear-gradient(90deg, rgba(255,255,255,0) 0%, rgba(255,255,255,0.8) 50%, rgba(255,255,255,0) 100%);
-    animation: shine 1.5s infinite;
-    opacity: 0;
-}
+}               
 .updated-highlight {
     animation: highlightUpdate 1s ease;
-}
-@keyframes taskReactivateAnimation {
-    0% { transform: translateX(0); }
-    50% { transform: translateX(-10px); }
-    100% { transform: translateX(0); }
-}
-@keyframes taskCompleteAnimation {
-    0% { transform: translateX(0); }
-    50% { transform: translateX(10px); }
-    100% { transform: translateX(0); }
-}
-@keyframes shine {
-    0% { transform: translateX(-100%); opacity: 0; }
-    20% { opacity: 0.3; }
-    100% { transform: translateX(100%); opacity: 0; }
-}
-@keyframes lineThrough {
-    to { transform: scaleX(1); }
-}
-@keyframes pulseActive {
-    0% { box-shadow: 0 0 0 0 rgba(13, 110, 253, 0.2); }
-    70% { box-shadow: 0 0 0 10px rgba(13, 110, 253, 0); }
-    100% { box-shadow: 0 0 0 0 rgba(13, 110, 253, 0); }
-}
-@keyframes completePulse {
-    0% { transform: translateX(0); }
-    50% { transform: translateX(10px); }
-    100% { transform: translateX(0); }
-}
-
-@keyframes reactivatePulse {
-    0% { transform: translateX(0); }
-    50% { transform: translateX(-10px); }
-    100% { transform: translateX(0); }
-}
-@keyframes deleteShrink {
-    0% { transform: scaleY(1); opacity: 1; }
-    50% { transform: scaleY(0.1); opacity: 0.5; }
-    100% { transform: scaleY(0); opacity: 0; height: 0; padding: 0; margin: 0; }
 }
 @keyframes highlightUpdate {
     0% { background-color: rgba(40, 167, 69, 0.1); }
     100% { background-color: transparent; }
-}
-@keyframes taskStarting {
-    0% { transform: scale(1); }
-    50% { transform: scale(1.05); }
-    100% { transform: scale(1); }
 }
 @keyframes fadeOut {
     to {
@@ -317,7 +186,6 @@ position: relative;
         border: none;
     }
 }
-
 .alert {
     position: fixed;
     top: 20px;
@@ -327,8 +195,40 @@ position: relative;
     border-radius: 4px;
     z-index: 1000;
 }
-
 .alert-error {
     background-color: #f8d7da;
     color: #721c24;
+}
+
+/* Индикатор загрузки */
+.loading-indicator {
+    position: fixed;
+    top: 20px;
+    right: 20px;
+    background: rgba(0, 0, 0, 0.8);
+    color: white;
+    padding: 10px 15px;
+    border-radius: 5px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    z-index: 1000;
+    display: none;
+}
+
+.loading-indicator.active {
+    display: flex;
+}
+
+.spinner {
+    width: 20px;
+    height: 20px;
+    border: 3px solid rgba(255, 255, 255, 0.3);
+    border-radius: 50%;
+    border-top-color: white;
+    animation: spin 1s ease-in-out infinite;
+}
+
+@keyframes spin {
+    to { transform: rotate(360deg); }
 }
