@@ -106,7 +106,7 @@ document.addEventListener('DOMContentLoaded', function() {
         e.preventDefault();
         const taskId = document.getElementById("editTaskId").value;
         const newText = document.getElementById("editTaskText").value.trim();
-        const taskElement = document.getElementById(`task-${taskId}`);
+        
 
         if (!newText) {
             showAlert('Текст задачи не может быть пустым', 'error');
@@ -125,6 +125,7 @@ document.addEventListener('DOMContentLoaded', function() {
             const data = await response.json();
             
             if (data.status === 'success') {
+                const taskElement = document.getElementById(`task-${taskId}`);
                 taskElement.querySelector('.task-content h6').textContent = newText;
                 
                 // Обновляем дату изменения

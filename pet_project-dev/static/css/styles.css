@@ -147,27 +147,26 @@ textarea.form-control {
     color: white;
 }
 .status-badge {
-    display: inline-block;
-    padding: 3px 8px;
-    border-radius: 12px;
     font-size: 0.75rem;
-    font-weight: 500;
-    margin-left: 8px;
+    padding: 2px 8px;
+    border-radius: 10px;
+    background-color: #f0f0f0;
+    color: #555;
 }
 
 .status-new .status-badge {
-    background-color: #e7f1ff;
-    color: #0d6efd;
+    background-color: #e3f2fd;
+    color: #1565c0;
 }
 
 .status-active .status-badge {
-    background-color: #e6f7ee;
-    color: #198754;
+    background-color: #e8f5e9;
+    color: #2e7d32;
 }
 
 .status-completed .status-badge {
-    background-color: #f8f9fa;
-    color: #6c757d;
+    background-color: #f5f5f5;
+    color: #616161;
 }
 .task-actions {
     display: flex;
@@ -342,5 +341,41 @@ textarea.form-control {
     .add-task-form .col-md-4 {
         margin-top: 10px;
     }
+}
+.task-tags {
+    margin-top: 8px;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 5px;
+}
+.tag-cloud {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+}
+.tag-badge {
+    display: inline-block;
+    padding: 4px 8px;
+    border-radius: 12px;
+    font-size: 0.8em;
+    text-decoration: none;
+    transition: transform 0.2s;
+}
+/* Цвета для популярных тегов */
+.tag-badge[data-tag="work"] {
+    background-color: #e3f2fd;
+    color: #1565c0;
+}
+.tag-badge[data-tag="urgent"] {
+    background-color: #ffebee;
+    color: #c62828;
+}
+.tag-badge[data-tag="personal"] {
+    background-color: #e8f5e9;
+    color: #2e7d32;
+}
+.tag-badge:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
 }
 

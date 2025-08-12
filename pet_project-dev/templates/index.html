@@ -11,6 +11,22 @@
 <body>
     <div class="container mt-4">
         <h1 class="mb-4">Мои задачи</h1>
+
+        <!-- В любом удобном месте, например в сайдбаре -->
+        <div class="card mt-4">
+            <div class="card-header">
+                Популярные теги
+            </div>
+            <div class="card-body tag-cloud">
+                {% for tag in popular_tags %}
+                    <a href="{{ url_for('filter_by_tag', tag=tag.name) }}" 
+                    class="tag-badge me-1 mb-1"
+                    style="background-color: {{ tag.color }}; color: white;">
+                        {{ tag.name }} ({{ tag.usage_count }})
+                    </a>
+                {% endfor %}
+            </div>
+        </div>
         
         <!-- Навигационные вкладки -->
         <ul class="nav nav-tabs">
@@ -36,6 +52,10 @@
                 <div class="col-md-9">
                     <input type="text" name="task" class="form-control form-control-lg" placeholder="Введите новую задачу" required>
                 </div>
+                <div class="col-md-12 mt-2">
+                    <input type="text" name="tags" class="form-control form-control-sm" 
+                        placeholder="Теги (через запятую): work, urgent">
+                </div>
                 <div class="col-md-3">
                     <button type="submit" class="btn btn-primary btn-lg w-100">
                         <i class="bi bi-plus-lg"></i>Добавить задачу
@@ -51,14 +71,24 @@
                 {% for todo in todos %}
                 <div class="list-group-item task-item status-{{ todo.status }}" id="task-{{ todo.id }}">
                     <div class="task-content">
-                        <h6>
-                            {{ todo.task }}
-                            <span class="status-badge">
+                        <!-- В карточке задачи -->
+                        <div class="task-tags mt-2">
+                            {% if todo.tags %}
+                                {% for tag in todo.tags.split(',') %}
+                                    {% if tag.strip() %}
+                                    <span class="badge bg-secondary me-1">{{ tag.strip() }}</span>
+                                    {% endif %}
+                                {% endfor %}
+                            {% endif %}
+                        </div>
+                        <div class="d-flex align-items-center">
+                            <h6 class="mb-0">{{ todo.task }}</h6>
+                            <span class="status-badge ms-2">
                                 {% if todo.status == 'new' %}Новая{% endif %}
                                 {% if todo.status == 'active' %}В работе{% endif %}
                                 {% if todo.status == 'completed' %}Завершена{% endif %}
                             </span>
-                        </h6>
+                        </div>
                         <div class="dates">
                             <small>Создано: {{ todo.created_at|format_date }}</small>
                             {% if todo.started_at %}
@@ -148,6 +178,11 @@
                 <div class="form-group">
                     <label for="editTaskText">Текст задачи:</label>
                     <textarea id="editTaskText" class="form-control" rows="3" required></textarea>
+                </div>
+                <div class="form-group mt-3">
+                    <label for="editTaskTags">Теги:</label>
+                    <input type="text" id="editTaskTags" class="form-control" 
+                        placeholder="work, urgent, meeting">
                 </div>
                 <button type="submit" class="btn btn-primary">Сохранить</button>
             </form>

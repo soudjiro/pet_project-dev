@@ -30,11 +30,20 @@ class Todo(db.Model):
     id = db.Column(db.Integer, primary_key=True) # id задачи
     task = db.Column(db.String(100), nullable=False) # описание задачи
     status = db.Column(db.String(20), default='new', nullable=False)  # 'new', 'active', 'completed'
+    # Добавляем поле для тегов (храним как строку с разделителем запятая)
+    tags = db.Column(db.String(200))
     created_at = db.Column(db.DateTime, default=lambda: get_moscow_time(), nullable=False) # Поле когда задачу создали
     started_at = db.Column(db.DateTime)  # Поле когда задачу взяли в работу
     completed_at = db.Column(db.DateTime) # Поле когда задача завершена
     updated_at = db.Column(db.DateTime)  # Поле когда задачу отредактировали
     is_edited = db.Column(db.Boolean, default=False)  # Флаг редактирования
+    
+# Создаем таблицу для уникальных тегов (опционально для фильтрации)
+class Tag(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    name = db.Column(db.String(50), unique=True, nullable=False)
+    color = db.Column(db.String(7), default='#6c757d')  # Цвет в HEX
+    usage_count = db.Column(db.Integer, default=0)  # Добавляем счетчик
         
 
 def check_and_upgrade_db():
@@ -42,6 +51,10 @@ def check_and_upgrade_db():
         # Проверяем существование таблицы
         inspector = db.inspect(db.engine)
         if 'todo' not in inspector.get_table_names():
+            db.create_all()
+            return
+        
+        if 'tag' not in inspector.get_table_names():
             db.create_all()
             return
         
@@ -74,16 +87,31 @@ def check_and_upgrade_db():
     
 @app.route("/")
 def index():
-    return redirect(url_for("new_tasks"))    
-
+    # Получаем 10 самых популярных тегов
+    popular_tags = Tag.query.order_by(Tag.usage_count.desc()).limit(10).all()
+    return redirect(url_for("new_tasks", popular_tags=popular_tags))
+    
+# роут новой задачи
 @app.route("/new", methods=["GET", "POST"])
 def new_tasks():
     if request.method == "POST":
         task = request.form.get("task")
+        tags = request.form.get("tags", "").strip()
         if task:
-            new_todo = Todo(task=task, status='new', created_at=get_moscow_time())
+            new_todo = Todo(task=task, tags=tags, status='new', created_at=get_moscow_time())
             db.session.add(new_todo)
+            
+        # Опционально: сохраняем новые теги в таблицу Tag
+            for tag_name in [t.strip() for t in tags.split(',') if t.strip()]:
+                tag = Tag.query.filter_by(name=tag_name).first()
+                if tag:
+                    tag.usage_count += 1
+                else:
+                    tag = Tag(name=tag_name, usage_count=1)
+                    db.session.add(tag)
+            
             db.session.commit()
+        
         return redirect(url_for("new_tasks")) # Остаемся на той же вкладке
     
     new = Todo.query.filter_by(status='new').order_by(Todo.created_at.desc()).all()
@@ -121,9 +149,30 @@ def start_task(id):
         db.session.commit()
     return jsonify({'status': 'success'})
 
-@app.route("/edit/<int:id>", methods=["GET", "POST"])
+@app.route("/edit/<int:id>", methods=["POST"])
 def edit_task(id):
     todo = Todo.query.get_or_404(id)
+    old_tags = set(todo.tags.split(',')) if todo.tags else set()
+    
+    new_tags = set(request.form.get('tags', '').split(',')) if request.form.get('tags') else set()
+    
+    # Обновляем счетчики тегов
+    for tag in old_tags - new_tags:
+        db_tag = Tag.query.filter_by(name=tag).first()
+        if db_tag:
+            db_tag.usage_count -= 1
+    
+    for tag in new_tags - old_tags:
+        db_tag = Tag.query.filter_by(name=tag).first()
+        if db_tag:
+            db_tag.usage_count += 1
+        else:
+            db_tag = Tag(name=tag, usage_count=1)
+            db.session.add(db_tag)
+    
+    todo.tags = ','.join(new_tags)
+    db.session.commit()
+    
     if todo.status == 'completed':
         return jsonify({'status': 'error', 'message': 'Нельзя редактировать завершенную задачу'}), 403
     
@@ -133,6 +182,7 @@ def edit_task(id):
         
     if new_task != todo.task:
         todo.task = new_task
+        todo.tags = request.form.get('tags', '').strip()
         now = get_moscow_time()
         todo.updated_at = now
         todo.is_edited = True
@@ -147,9 +197,19 @@ def edit_task(id):
     
     return jsonify({'status': 'no_changes'})
 
+    
+
 @app.route("/delete/<int:id>")
 def delete(id):
-    todo = Todo.query.get(id)
+    todo = Todo.query.get_or_404(id)
+    
+    # Уменьшаем счетчики тегов
+    if todo.tags:
+        for tag_name in todo.tags.split(','):
+            tag = Tag.query.filter_by(name=tag_name.strip()).first()
+            if tag:
+                tag.usage_count -= 1
+    
     db.session.delete(todo)
     db.session.commit()
     return jsonify({'status': 'success'})
@@ -189,6 +249,24 @@ def reactivate_task(id):
             'status': 'error',
             'message': f'Ошибка сервера: {str(e)}'
         }), 500
+        
+@app.route("/filter/<tag>")
+def filter_by_tag(tag):
+    # Ищем задачи, содержащие этот тег
+    tasks = Todo.query.filter(Todo.tags.contains(tag)).all()
+    
+    # Увеличиваем счетчик популярности тега
+    db_tag = Tag.query.filter_by(name=tag).first()
+    if db_tag:
+        db_tag.usage_count += 1
+        db.session.commit()
+    
+    popular_tags = Tag.query.order_by(Tag.usage_count.desc()).limit(10).all()
+    return render_template("index.html", 
+                         todos=tasks, 
+                         active_tab='filter',
+                         popular_tags=popular_tags,
+                         current_tag=tag)
 
 @app.template_filter('format_date')
 def format_date_filter(dt, format='%d.%m.%Y %H:%M'):
