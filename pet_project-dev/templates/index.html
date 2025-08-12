@@ -11,9 +11,32 @@
 <body>
     <div class="container mt-4">
         <h1 class="mb-4">Мои задачи</h1>
+
+        <!-- В любом удобном месте, например в сайдбаре -->
+        <div class="card mt-4">
+            <div class="card-header">
+                Популярные теги
+            </div>
+            <div class="card-body tag-cloud">
+                {% for tag in popular_tags %}
+                    <a href="{{ url_for('filter_by_tag', tag=tag.name) }}" 
+                    class="tag-badge me-1 mb-1"
+                    style="background-color: {{ tag.color }}; color: white;">
+                        {{ tag.name }} ({{ tag.usage_count }})
+                    </a>
+                {% endfor %}
+            </div>
+        </div>
         
         <!-- Навигационные вкладки -->
         <ul class="nav nav-tabs">
+            <li class="nav-item">
+                <a class="nav-link {{ 'active' if active_tab == 'new' }}" href="{{ url_for('new_tasks') }}">Новые
+                    {% if active_tab == 'new' and todos|length > 0 %}
+                        <span class="badge bg-primary rounded-pill">{{ todos|length }}</span>
+                    {% endif %}
+                </a>
+            </li>
             <li class="nav-item">
                 <a class="nav-link {{ 'active' if active_tab == 'active' }}" href="{{ url_for('active_tasks') }}">Активные</a>
             </li>
@@ -22,15 +45,21 @@
             </li>
         </ul>
 
-        <!-- Форма добавления (только для активных задач) -->
-        {% if active_tab == 'active' %}
-        <div class="add-task-form">
-            <form method="POST" action="{{ url_for('active_tasks') }}" class="row g-3">
-                <div class="col-md-8">
-                    <input type="text" name="task" class="form-control" placeholder="Новая задача" required>
+        <!-- Форма добавления (только для новых задач) -->
+        {% if active_tab == 'new' %}
+        <div class="add-task-form mt-3 mb-4 p-3 bg-light rounded">
+            <form method="POST" action="{{ url_for('new_tasks') }}" class="row g-2 align-items-center">
+                <div class="col-md-9">
+                    <input type="text" name="task" class="form-control form-control-lg" placeholder="Введите новую задачу" required>
                 </div>
-                <div class="col-md-4">
-                    <button type="submit" class="btn btn-primary">Добавить</button>
+                <div class="col-md-12 mt-2">
+                    <input type="text" name="tags" class="form-control form-control-sm" 
+                        placeholder="Теги (через запятую): work, urgent">
+                </div>
+                <div class="col-md-3">
+                    <button type="submit" class="btn btn-primary btn-lg w-100">
+                        <i class="bi bi-plus-lg"></i>Добавить задачу
+                    </button>
                 </div>
             </form>
         </div>
@@ -38,56 +67,105 @@
 
         <!-- Список задач -->
         <div class="list-group">
-            {% for todo in todos %}
-            <div class="list-group-item task-item {{ 'completed-task' if todo.completed }}" id="task-{{ todo.id }}">
-                <div class="task-content">
-                    {{ todo.task }}
-                    <small class="dates text-muted small">
-                        Создано: {{ todo.created_at|format_date }}
-                        {% if todo.completed %}
-                        | Завершено: {{ todo.completed_at|format_date }}
+            {% if todos %}
+                {% for todo in todos %}
+                <div class="list-group-item task-item status-{{ todo.status }}" id="task-{{ todo.id }}">
+                    <div class="task-content">
+                        <!-- В карточке задачи -->
+                        <div class="task-tags mt-2">
+                            {% if todo.tags %}
+                                {% for tag in todo.tags.split(',') %}
+                                    {% if tag.strip() %}
+                                    <span class="badge bg-secondary me-1">{{ tag.strip() }}</span>
+                                    {% endif %}
+                                {% endfor %}
+                            {% endif %}
+                        </div>
+                        <div class="d-flex align-items-center">
+                            <h6 class="mb-0">{{ todo.task }}</h6>
+                            <span class="status-badge ms-2">
+                                {% if todo.status == 'new' %}Новая{% endif %}
+                                {% if todo.status == 'active' %}В работе{% endif %}
+                                {% if todo.status == 'completed' %}Завершена{% endif %}
+                            </span>
+                        </div>
+                        <div class="dates">
+                            <small>Создано: {{ todo.created_at|format_date }}</small>
+                            {% if todo.started_at %}
+                            <small> | Начато: {{ todo.started_at|format_date }}</small>
+                            {% endif %}
+                            {% if todo.completed_at %}
+                            <small> | Завершено: {{ todo.completed_at|format_date }}</small>
+                            {% endif %}
+                            {% if todo.is_edited %}
+                            <small> | Изменено: {{ todo.updated_at|format_date }}</small>
+                            {% endif %}
+                        </div>
+                    </div>
+                    <div class="task-actions">
+                        {% if todo.status == 'new' %}
+                        <button class="btn btn-sm btn-primary start-btn"
+                                data-task-id="{{ todo.id }}"
+                                title="Взять в работу">
+                            ⚡ В работу
+                        </button>
+                        
+                        {% elif todo.status == 'active' %}
+                        <button class="btn btn-sm btn-success complete-btn"
+                                data-task-id="{{ todo.id }}"
+                                title="Завершить">
+                            ✓ Готово
+                        </button>
+                        <button class="btn btn-sm btn-outline-primary edit-btn"
+                                data-task-id="{{ todo.id }}"
+                                title="Редактировать">
+                            ✏️
+                        </button>
+                        
+                        {% elif todo.status == 'completed' %}
+                        <button class="btn btn-sm btn-warning reactivate-btn"
+                                data-task-id="{{ todo.id }}"
+                                title="Вернуть в работу">
+                            ↩️ В работу
+                        </button>
                         {% endif %}
-                        {% if todo.is_edited %}
-                        | Изменено: {{ todo.updated_at|format_date }}
-                        {% endif %}
-                    </small>
+                        
+                        <button class="btn btn-sm btn-outline-danger delete-btn"
+                                data-task-id="{{ todo.id }}"
+                                title="Удалить">
+                            🗑️
+                        </button>
+                    </div>
                 </div>
-                <div class="task-actions">
-                    {% if todo.completed %}
-                    <button class="btn btn-sm btn-warning reactivate-btn"
-                            data-task-id="{{ todo.id }}"
-                            title="Вернуть в активные">
-                        ↩️
-                        </a>
-                    {% else %}
-                    <button class="btn btn-sm btn-success complete-btn"
-                            data-task-id="{{ todo.id }}"
-                            title="Завершить">
-                        ✓
-                    </button>                    
-                    <button class="btn btn-sm btn-outline-primary edit-btn"
-                            data-task-id="{{ todo.id }}"
-                            title="Редактировать">
-                            {% if todo.completed %}disabled style="opacity:0.5;pointer-events:none"{% endif %}
-                        ✏️
-                    </button>
-                    {% endif %}
-                    <button class="btn btn-sm btn-outline-danger delete-btn"
-                            data-task-id="{{ todo.id }}"
-                            title="Удалить">
-                        🗑️
-                    </button>
-                </div>
-            </div>
+                {% endfor %}
             {% else %}
-            <div class="alert alert-info">
-                {% if active_tab == 'active' %}
-                Нет активных задач. Добавьте новую!
-                {% else %}
-                Нет завершенных задач.
-                {% endif %}
-            </div>
-            {% endfor %}
+                <div class="empty-state text-center p-5">
+                     <div class="empty-icon mb-4">
+                        {% if active_tab == 'new' %}
+                        <i class="bi bi-inbox-fill" style="font-size: 3rem; color: #0d6efd;"></i>
+                        {% elif active_tab == 'active' %}
+                        <i class="bi bi-list-task" style="font-size: 3rem; color: #198754;"></i>
+                        {% else %}
+                        <i class="bi bi-check-circle-fill" style="font-size: 3rem; color: #6c757d;"></i>
+                        {% endif %}
+                    </div>
+                    <h4 class="mb-3">
+                        {% if active_tab == 'new' %}Нет задач{% endif %}
+                        {% if active_tab == 'active' %}Ничего в работе{% endif %}
+                        {% if active_tab == 'completed' %}Нет завершенных задач{% endif %}
+                    </h4>
+                    <p class="text-muted mb-4">
+                        {% if active_tab == 'new' %}Добавьте свою первую задачу{% endif %}
+                        {% if active_tab == 'active' %}Возьмите задачу в работу из списка "Новые"{% endif %}
+                        {% if active_tab == 'completed' %}Завершите текущие задачи из списка "В работе"{% endif %}
+                    </p>
+                    {% if active_tab == 'active' or active_tab == 'completed' %}
+                    <a href="{{ url_for('new_tasks') }}" class="btn btn-outline-primary">
+                        <i class="bi bi-arrow-left"></i> К новым задачам
+                    </a>
+                    {% endif %}
+                </div>
+            {% endif %}
         </div>
     </div>
 
@@ -100,6 +178,11 @@
                 <div class="form-group">
                     <label for="editTaskText">Текст задачи:</label>
                     <textarea id="editTaskText" class="form-control" rows="3" required></textarea>
+                </div>
+                <div class="form-group mt-3">
+                    <label for="editTaskTags">Теги:</label>
+                    <input type="text" id="editTaskTags" class="form-control" 
+                        placeholder="work, urgent, meeting">
                 </div>
                 <button type="submit" class="btn btn-primary">Сохранить</button>
             </form>
