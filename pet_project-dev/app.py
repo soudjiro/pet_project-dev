@@ -2,7 +2,7 @@ from flask import Flask, request, redirect, url_for, render_template, jsonify
 from flask_sqlalchemy import SQLAlchemy
 from sqlalchemy import text
 from datetime import datetime
-import os, logging
+import os, logging, random
 
 app = Flask(__name__, static_folder='static')
 db_path = os.path.abspath(os.path.join(os.path.dirname(__file__), 'todos.db'))
@@ -16,6 +16,9 @@ try:
     from zoneinfo import ZoneInfo  # Python 3.9+
 except ImportError:
     from pytz import timezone as ZoneInfo  # Для старых версий Python
+# генерация цвета
+def random_color():
+    return f"#{random.randint(0x10, 0xE0):02x}{random.randint(0x10, 0xE0):02x}{random.randint(0x10, 0xE0):02x}"
     
 def get_moscow_time():
     """Возвращает текущее время по Москве"""
@@ -44,6 +47,7 @@ class Tag(db.Model):
     name = db.Column(db.String(50), unique=True, nullable=False)
     color = db.Column(db.String(7), default='#6c757d')  # Цвет в HEX
     usage_count = db.Column(db.Integer, default=0)  # Добавляем счетчик
+    __table_args__ = (db.Index('idx_tag_name', 'name'),)
         
 
 def check_and_upgrade_db():
@@ -107,7 +111,7 @@ def new_tasks():
                 if tag:
                     tag.usage_count += 1
                 else:
-                    tag = Tag(name=tag_name, usage_count=1)
+                    tag = Tag(name=tag_name, usage_count=1, color=random_color())
                     db.session.add(tag)
             
             db.session.commit()
@@ -115,17 +119,36 @@ def new_tasks():
         return redirect(url_for("new_tasks")) # Остаемся на той же вкладке
     
     new = Todo.query.filter_by(status='new').order_by(Todo.created_at.desc()).all()
-    return render_template("index.html", todos=new, active_tab='new')
+    popular_tags = Tag.query.order_by(Tag.usage_count.desc()).limit(10).all()
+    all_tags_dict = {tag.name: tag for tag in Tag.query.all()}
+    return render_template("index.html", todos=new, active_tab='new', popular_tags=popular_tags, all_tags_dict=all_tags_dict)
     
 @app.route("/active", methods=["GET", "POST"])
 def active_tasks():
     active = Todo.query.filter_by(status='active').order_by(Todo.started_at.desc()).all()
-    return render_template("index.html", todos=active, active_tab='active')
+    popular_tags = Tag.query.order_by(Tag.usage_count.desc()).limit(10).all()
+    all_tags_dict = {tag.name: tag for tag in Tag.query.all()}
+    return render_template("index.html", todos=active, active_tab='active', popular_tags=popular_tags, all_tags_dict=all_tags_dict)
 
 @app.route("/completed", methods=["GET"])
 def completed_tasks():
-    completed = Todo.query.filter_by(status='completed').order_by(Todo.completed_at.desc()).all()
-    return render_template("index.html", todos=completed, active_tab='completed')  
+    page = request.args.get('page', 1, type=int)
+    per_page = 10
+    
+    # Запрос с пагинацией
+    completed = Todo.query.filter_by(status='completed')\
+                         .order_by(Todo.completed_at.desc())\
+                         .paginate(page=page, per_page=per_page)
+    
+    all_tags_dict = {tag.name: tag for tag in Tag.query.all()}
+    popular_tags = Tag.query.order_by(Tag.usage_count.desc()).limit(10).all()
+    
+    return render_template("index.html", 
+                         todos=completed.items,
+                         pagination=completed,
+                         active_tab='completed',
+                         all_tags_dict=all_tags_dict,
+                         popular_tags=popular_tags)
 
 @app.route('/complete/<int:id>')
 def complete_task(id):
@@ -152,23 +175,31 @@ def start_task(id):
 @app.route("/edit/<int:id>", methods=["POST"])
 def edit_task(id):
     todo = Todo.query.get_or_404(id)
-    old_tags = set(todo.tags.split(',')) if todo.tags else set()
+    old_tags = set(t.strip() for t in todo.tags.split(',') if t.strip()) if todo.tags else set()
     
-    new_tags = set(request.form.get('tags', '').split(',')) if request.form.get('tags') else set()
+    new_tags_str = request.form.get('tags', '').strip()
+    new_tags = set(t.strip() for t in new_tags_str.split(',') if t.strip())
+    all_tags = {tag.name: tag for tag in Tag.query.all()}
     
     # Обновляем счетчики тегов
     for tag in old_tags - new_tags:
-        db_tag = Tag.query.filter_by(name=tag).first()
-        if db_tag:
-            db_tag.usage_count -= 1
-    
+        if tag in all_tags:
+            db_tag = all_tags[tag]
+            if db_tag.usage_count > 0:
+                db_tag.usage_count -= 1
+            # Удаляем тег, если он больше не используется
+            if db_tag.usage_count == 0:
+                db.session.delete(db_tag)
+                del all_tags[tag]
+
     for tag in new_tags - old_tags:
-        db_tag = Tag.query.filter_by(name=tag).first()
-        if db_tag:
+        if tag in all_tags:
+            db_tag = all_tags[tag]
             db_tag.usage_count += 1
         else:
-            db_tag = Tag(name=tag, usage_count=1)
+            db_tag = Tag(name=tag, usage_count=1, color=random_color())
             db.session.add(db_tag)
+            all_tags[tag] = db_tag
     
     todo.tags = ','.join(new_tags)
     db.session.commit()
@@ -180,21 +211,33 @@ def edit_task(id):
     if not new_task:
         return jsonify({'status': 'error', 'message': 'Текст задачи не может быть пустым'}), 400
         
-    if new_task != todo.task:
+    if new_task != todo.task or new_tags != old_tags:
         todo.task = new_task
-        todo.tags = request.form.get('tags', '').strip()
+        todo.tags = new_tags_str
         now = get_moscow_time()
         todo.updated_at = now
         todo.is_edited = True
+        
+         # Генерируем HTML для тегов
+        tags_html = ""
+        if todo.tags:
+            for tag_name in todo.tags.split(','):
+                tag_name = tag_name.strip()
+                if tag_name:
+                    db_tag = Tag.query.filter_by(name=tag_name).first()
+                    color = db_tag.color if db_tag else '#6c757d'
+                    tags_html += f'<a href="{url_for("filter_by_tag", tag=tag_name)}" class="tag-badge me-1 mb-1" style="background-color: {color}; color: white;">{tag_name}</a>'
+        
         db.session.commit()
         
         return jsonify({
             'status': 'success',
             'updated_at': now.strftime('%d.%m.%Y %H:%M'),
             'is_edited': True,
-            'new_text': new_task
+            'new_text': new_task,
+            'tags_html': tags_html
         })
-    
+        
     return jsonify({'status': 'no_changes'})
 
     
@@ -206,9 +249,13 @@ def delete(id):
     # Уменьшаем счетчики тегов
     if todo.tags:
         for tag_name in todo.tags.split(','):
-            tag = Tag.query.filter_by(name=tag_name.strip()).first()
-            if tag:
-                tag.usage_count -= 1
+            tag_name = tag_name.strip()
+            if tag_name:
+                tag = Tag.query.filter_by(name=tag_name).first()
+                if tag:
+                    tag.usage_count -= 1
+                    if tag.usage_count == 0:
+                        db.session.delete(tag)
     
     db.session.delete(todo)
     db.session.commit()
@@ -255,18 +302,44 @@ def filter_by_tag(tag):
     # Ищем задачи, содержащие этот тег
     tasks = Todo.query.filter(Todo.tags.contains(tag)).all()
     
-    # Увеличиваем счетчик популярности тега
-    db_tag = Tag.query.filter_by(name=tag).first()
-    if db_tag:
-        db_tag.usage_count += 1
-        db.session.commit()
-    
     popular_tags = Tag.query.order_by(Tag.usage_count.desc()).limit(10).all()
+    all_tags_dict = {tag.name: tag for tag in Tag.query.all()}
     return render_template("index.html", 
                          todos=tasks, 
                          active_tab='filter',
                          popular_tags=popular_tags,
+                         all_tags_dict=all_tags_dict,
                          current_tag=tag)
+    
+@app.route("/api/tags")
+def get_tags():
+    search = request.args.get('search', '')
+    tags = Tag.query.filter(Tag.name.ilike(f'%{search}%')).order_by(Tag.usage_count.desc()).limit(10).all()
+    return jsonify([tag.name for tag in tags])
+
+@app.route("/refresh-tags")
+def refresh_tags():
+    # Пересчитываем счетчики тегов
+    all_tags_dict = {tag.name: tag for tag in Tag.query.all()}
+    tag_names = {tag.name for tag in all_tags_dict}
+    
+    # Сбрасываем счетчики
+    for tag in all_tags_dict:
+        tag.usage_count = 0
+    
+    # Пересчитываем использование тегов
+    todos = Todo.query.all()
+    for todo in todos:
+        if todo.tags:
+            for tag_name in todo.tags.split(','):
+                tag_name = tag_name.strip()
+                if tag_name in tag_names:
+                    tag = next((t for t in all_tags_dict if t.name == tag_name), None)
+                    if tag:
+                        tag.usage_count += 1
+    
+    db.session.commit()
+    return jsonify({'status': 'success'})
 
 @app.template_filter('format_date')
 def format_date_filter(dt, format='%d.%m.%Y %H:%M'):
