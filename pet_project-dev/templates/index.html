@@ -14,8 +14,11 @@
 
         <!-- В любом удобном месте, например в сайдбаре -->
         <div class="card mt-4">
-            <div class="card-header">
+            <div class="card-header d-flex justify-content-between align-items-center">
                 Популярные теги
+                <button class="btn btn-sm btn-outline-secondary" id="refresh-tags">
+                    <i class="bi bi-arrow-clockwise"></i>
+                </button>
             </div>
             <div class="card-body tag-cloud">
                 {% for tag in popular_tags %}
@@ -52,9 +55,10 @@
                 <div class="col-md-9">
                     <input type="text" name="task" class="form-control form-control-lg" placeholder="Введите новую задачу" required>
                 </div>
-                <div class="col-md-12 mt-2">
+                <div class="col-md-12 mt-2 tag-input-container">
                     <input type="text" name="tags" class="form-control form-control-sm" 
-                        placeholder="Теги (через запятую): work, urgent">
+                        placeholder="Теги (через запятую): work, urgent" id="newTaskTags">
+                    <div id="newTagSuggestions" class="list-group mt-1" style="display: none;"></div>
                 </div>
                 <div class="col-md-3">
                     <button type="submit" class="btn btn-primary btn-lg w-100">
@@ -74,9 +78,14 @@
                         <!-- В карточке задачи -->
                         <div class="task-tags mt-2">
                             {% if todo.tags %}
-                                {% for tag in todo.tags.split(',') %}
-                                    {% if tag.strip() %}
-                                    <span class="badge bg-secondary me-1">{{ tag.strip() }}</span>
+                                {% for tag_name in todo.tags.split(',') %}
+                                    {% if tag_name.strip() %}
+                                        {% set tag_info = all_tags_dict.get(tag_name.strip()) %}
+                                        <a href="{{ url_for('filter_by_tag', tag=tag_name.strip()) }}" 
+                                        class="tag-badge me-1 mb-1"
+                                        style="background-color: {{ tag_info.color if tag_info else '#6c757d' }}; color: white;">
+                                            {{ tag_name.strip() }}
+                                        </a>
                                     {% endif %}
                                 {% endfor %}
                             {% endif %}
@@ -138,36 +147,53 @@
                     </div>
                 </div>
                 {% endfor %}
-            {% else %}
-                <div class="empty-state text-center p-5">
-                     <div class="empty-icon mb-4">
-                        {% if active_tab == 'new' %}
-                        <i class="bi bi-inbox-fill" style="font-size: 3rem; color: #0d6efd;"></i>
-                        {% elif active_tab == 'active' %}
-                        <i class="bi bi-list-task" style="font-size: 3rem; color: #198754;"></i>
-                        {% else %}
-                        <i class="bi bi-check-circle-fill" style="font-size: 3rem; color: #6c757d;"></i>
-                        {% endif %}
-                    </div>
-                    <h4 class="mb-3">
-                        {% if active_tab == 'new' %}Нет задач{% endif %}
-                        {% if active_tab == 'active' %}Ничего в работе{% endif %}
-                        {% if active_tab == 'completed' %}Нет завершенных задач{% endif %}
-                    </h4>
-                    <p class="text-muted mb-4">
-                        {% if active_tab == 'new' %}Добавьте свою первую задачу{% endif %}
-                        {% if active_tab == 'active' %}Возьмите задачу в работу из списка "Новые"{% endif %}
-                        {% if active_tab == 'completed' %}Завершите текущие задачи из списка "В работе"{% endif %}
-                    </p>
-                    {% if active_tab == 'active' or active_tab == 'completed' %}
-                    <a href="{{ url_for('new_tasks') }}" class="btn btn-outline-primary">
-                        <i class="bi bi-arrow-left"></i> К новым задачам
-                    </a>
-                    {% endif %}
-                </div>
             {% endif %}
+                {% if pagination %}
+                <div class="mt-3">
+                    <nav aria-label="Page navigation">
+                        <ul class="pagination">
+                            {% if pagination.has_prev %}
+                            <li class="page-item">
+                                <a class="page-link" href="{{ url_for('completed_tasks', page=pagination.prev_num) }}">Назад</a>
+                            </li>
+                            {% endif %}
+                            
+                            {% for page_num in pagination.iter_pages() %}
+                            <li class="page-item {% if page_num == pagination.page %}active{% endif %}">
+                                <a class="page-link" href="{{ url_for('completed_tasks', page=page_num) }}">{{ page_num }}</a>
+                            </li>
+                            {% endfor %}
+                            
+                            {% if pagination.has_next %}
+                            <li class="page-item">
+                                <a class="page-link" href="{{ url_for('completed_tasks', page=pagination.next_num) }}">Вперед</a>
+                            </li>
+                            {% endif %}
+                        </ul>
+                    </nav>
+                    <div class="text-muted text-center">
+                        Показано с {{ pagination.first }} по {{ pagination.last }} из {{ pagination.total }} задач
+                    </div>
+                </div>
+            {% endif %}                 
         </div>
     </div>
+
+     <div id="empty-state" class="empty-state text-center py-5" style="display: {% if todos %}none{% else %}block{% endif %};">
+        {% if active_tab == 'new' %}
+        <i class="bi bi-inbox" style="font-size: 2rem; color: #6c757d;"></i>
+        <h5 class="mt-3">Нет новых задач</h5>
+        <p class="text-muted">Добавьте новую задачу с помощью формы выше</p>
+        {% elif active_tab == 'active' %}
+        <i class="bi bi-list-check" style="font-size: 2rem; color: #6c757d;"></i>
+        <h5 class="mt-3">Нет задач в работе</h5>
+        <p class="text-muted">Возьмите задачу в работу из списка "Новые"</p>
+        {% else %}
+        <i class="bi bi-check-circle" style="font-size: 2rem; color: #6c757d;"></i>
+        <h5 class="mt-3">Нет завершенных задач</h5>
+        <p class="text-muted">Завершите текущие задачи из списка "В работе"</p>
+        {% endif %}
+    </div>    
 
     <div id="editModal" class="modal">
         <div class="modal-content">
@@ -179,10 +205,14 @@
                     <label for="editTaskText">Текст задачи:</label>
                     <textarea id="editTaskText" class="form-control" rows="3" required></textarea>
                 </div>
-                <div class="form-group mt-3">
-                    <label for="editTaskTags">Теги:</label>
-                    <input type="text" id="editTaskTags" class="form-control" 
-                        placeholder="work, urgent, meeting">
+                <div class="form-group">
+                    <label for="editTaskTags">Теги (через запятую):</label>
+                    <input type="text" id="editTaskTags" class="form-control">
+                    <div id="tagSuggestions" class="list-group mt-1" style="display: none;"></div>
+                </div>
+                <label>Статус:</label>
+                <div class="form-control-plaintext">
+                    <div id="editTaskStatusDisplay" class="status-badge"></div>
                 </div>
                 <button type="submit" class="btn btn-primary">Сохранить</button>
             </form>
