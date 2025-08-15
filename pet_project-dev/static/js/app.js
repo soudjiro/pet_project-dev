@@ -2,6 +2,24 @@ document.addEventListener('DOMContentLoaded', function() {
     const newTagInput = document.getElementById('newTaskTags');
     const newTagSuggestions = document.getElementById('newTagSuggestions');
 
+    // Добавим функцию для обновления счетчиков в навигации
+    function updateTaskCounters(counters) {
+        const updateBadge = (selector, value) => {
+            const badge = document.querySelector(selector);
+            if (!badge) return;
+            
+            if (badge.textContent !== String(value)) {
+                badge.textContent = value;
+                badge.classList.add('updated');
+                setTimeout(() => badge.classList.remove('updated'), 500);
+            }
+        };
+
+        updateBadge('.nav-link[href*="new"] .badge', counters.new);
+        updateBadge('.nav-link[href*="active"] .badge', counters.active);
+        updateBadge('.nav-link[href*="completed"] .badge', counters.completed);
+    }
+
     function updateEmptyState() {
         const tasksContainer = document.getElementById('tasks-container');
         const emptyState = document.getElementById('empty-state');
@@ -15,11 +33,7 @@ document.addEventListener('DOMContentLoaded', function() {
     // Общая функция для обработки действий с задачами
     async function handleTaskAction(action, taskId) {
         const taskElement = document.getElementById(`task-${taskId}`);
-        if (!taskElement) return;
-
-        taskElement.classList.add('processing');
-        
-        try {
+         try {
             const response = await fetch(`/${action}/${taskId}`, {
                 method: action === 'reactivate' ? 'POST' : 'GET'
             });
@@ -29,6 +43,10 @@ document.addEventListener('DOMContentLoaded', function() {
             const data = await response.json();
             
             if (data.status === 'success') {
+                // Обновляем счетчики, если они пришли в ответе
+                if (data.counters) {
+                    updateTaskCounters(data.counters);
+                }
                 // Добавляем класс для анимации исчезновения
                 taskElement.classList.add('disappearing');
                  // Удаляем элемент после анимации

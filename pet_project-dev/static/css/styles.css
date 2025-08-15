@@ -7,9 +7,21 @@
     border: 1px solid #e9ecef;
 }
 /* Бейдж для количества задач */
-.badge {
+.nav-tabs .badge {
+    margin-left: 5px;
     font-size: 0.7em;
     vertical-align: middle;
+}
+.nav-link[href*="new"] .badge {
+    background-color: #0d6efd !important; /* Синий */
+}
+
+.nav-link[href*="active"] .badge {
+    background-color: #198754 !important; /* Зеленый */
+}
+
+.nav-link[href*="completed"] .badge {
+    background-color: #6c757d !important; /* Серый */
 }
 .btn {
     transition: all 0.2s ease;
@@ -517,5 +529,16 @@ textarea.form-control {
 
 .tag-suggestion-item:hover {
     background-color: #f8f9fa;
+}
+
+.badge.updated {
+    animation: counterUpdate 0.5s ease;
+}
+
+/* Анимация при изменении счетчика */
+@keyframes counterUpdate {
+    0% { transform: scale(1); }
+    50% { transform: scale(1.2); color: #ffc107; }
+    100% { transform: scale(1); }
 }
 
