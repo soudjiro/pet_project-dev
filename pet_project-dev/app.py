@@ -4,6 +4,11 @@ from sqlalchemy import text
 from datetime import datetime
 import os, logging, random
 
+# В начале файла добавим константы статусов
+STATUS_NEW = 'new'
+STATUS_ACTIVE = 'active'
+STATUS_COMPLETED = 'completed'
+
 # Инициализация Flask приложения
 app = Flask(__name__, static_folder='static')
 # Установка пути к базе данных SQLite
@@ -21,6 +26,14 @@ try:
     from zoneinfo import ZoneInfo  # Python 3.9+
 except ImportError:
     from pytz import timezone as ZoneInfo  # Для старых версий Python
+    
+# Функция для получения счетчиков задач
+def get_task_counts():
+    return {
+        STATUS_NEW: Todo.query.filter_by(status=STATUS_NEW).count(),
+        STATUS_ACTIVE: Todo.query.filter_by(status=STATUS_ACTIVE).count(),
+        STATUS_COMPLETED: Todo.query.filter_by(status=STATUS_COMPLETED).count()
+    }
     
 # Функция генерации случайного цвета в HEX формате
 def random_color():
@@ -158,7 +171,13 @@ def new_tasks():
     popular_tags = Tag.query.order_by(Tag.usage_count.desc()).limit(10).all()
     # Создание словаря тегов для быстрого доступа
     all_tags_dict = {tag.name: tag for tag in Tag.query.all()}
-    return render_template("index.html", todos=new, active_tab='new', popular_tags=popular_tags, all_tags_dict=all_tags_dict)
+    task_counts = get_task_counts()
+    return render_template("index.html", 
+                         todos=new, 
+                         active_tab=STATUS_NEW,
+                         popular_tags=popular_tags, 
+                         all_tags_dict=all_tags_dict,
+                         task_counts=task_counts)
 
 # Маршрут для активных задач    
 @app.route("/active", methods=["GET", "POST"])
@@ -167,7 +186,13 @@ def active_tasks():
     active = Todo.query.filter_by(status='active').order_by(Todo.started_at.desc()).all()
     popular_tags = Tag.query.order_by(Tag.usage_count.desc()).limit(10).all()
     all_tags_dict = {tag.name: tag for tag in Tag.query.all()}
-    return render_template("index.html", todos=active, active_tab='active', popular_tags=popular_tags, all_tags_dict=all_tags_dict)
+    task_counts = get_task_counts()
+    return render_template("index.html", 
+                         todos=active, 
+                         active_tab=STATUS_ACTIVE,
+                         popular_tags=popular_tags, 
+                         all_tags_dict=all_tags_dict,
+                         task_counts=task_counts)
 
 # Маршрут для завершенных задач с пагинацией
 @app.route("/completed", methods=["GET"])
@@ -183,12 +208,14 @@ def completed_tasks():
     all_tags_dict = {tag.name: tag for tag in Tag.query.all()}
     popular_tags = Tag.query.order_by(Tag.usage_count.desc()).limit(10).all()
     
+    task_counts = get_task_counts()
     return render_template("index.html", 
                          todos=completed.items,
                          pagination=completed,
-                         active_tab='completed',
+                         active_tab=STATUS_COMPLETED,
                          all_tags_dict=all_tags_dict,
-                         popular_tags=popular_tags)
+                         popular_tags=popular_tags,
+                         task_counts=task_counts)
 
 # Маршрут для завершения задачи
 @app.route('/complete/<int:id>')
@@ -201,7 +228,8 @@ def complete_task(id):
         db.session.commit()
         return jsonify({
             'status': 'success',
-            'completed_at': todo.completed_at.strftime('%d.%m.%Y %H:%M')
+            'completed_at': todo.completed_at.strftime('%d.%m.%Y %H:%M'),
+            'counters': get_task_counts()
         })
     return jsonify({'status': 'error', 'message': 'Можно завершать только активные задачи'}), 400
 
@@ -214,6 +242,10 @@ def start_task(id):
         todo.status = 'active'
         todo.started_at = get_moscow_time()
         db.session.commit()
+        return jsonify({
+            'status': 'success',
+            'counters': get_task_counts()  # Добавляем счетчики
+        })
     return jsonify({'status': 'success'})
 
 # Маршрут для редактирования задачи
@@ -283,6 +315,7 @@ def edit_task(id):
         
         return jsonify({
             'status': 'success',
+            'counters': get_task_counts(),
             'updated_at': now.strftime('%d.%m.%Y %H:%M'),
             'is_edited': True,
             'new_text': new_task,
@@ -312,7 +345,8 @@ def delete(id):
     # Удаление задачи
     db.session.delete(todo)
     db.session.commit()
-    return jsonify({'status': 'success'})
+    return jsonify({'status': 'success',
+                    'counters': get_task_counts()})
 
 # Альтернативный маршрут для завершения задачи (для тестирования)
 @app.route("/toggle/<int:id>")
@@ -345,7 +379,8 @@ def reactivate_task(id):
         return jsonify({
             'status': 'success',
             'new_status': 'active',
-            'task_id': todo.id
+            'task_id': todo.id,
+            'counters': get_task_counts()
         })
         
     except Exception as e:
@@ -364,12 +399,14 @@ def filter_by_tag(tag):
     popular_tags = Tag.query.order_by(Tag.usage_count.desc()).limit(10).all()
     # Создание словаря тегов
     all_tags_dict = {tag.name: tag for tag in Tag.query.all()}
+    task_counts = get_task_counts()
     return render_template("index.html", 
                          todos=tasks, 
                          active_tab='filter',
                          popular_tags=popular_tags,
                          all_tags_dict=all_tags_dict,
-                         current_tag=tag)
+                         current_tag=tag,
+                         task_counts=task_counts)
 
 # API для получения тегов (для автодополнения)    
 @app.route("/api/tags")
