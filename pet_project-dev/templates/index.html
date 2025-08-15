@@ -34,17 +34,22 @@
         <!-- Навигационные вкладки -->
         <ul class="nav nav-tabs">
             <li class="nav-item">
-                <a class="nav-link {{ 'active' if active_tab == 'new' }}" href="{{ url_for('new_tasks') }}">Новые
-                    {% if active_tab == 'new' and todos|length > 0 %}
-                        <span class="badge bg-primary rounded-pill">{{ todos|length }}</span>
-                    {% endif %}
+                <a class="nav-link {{ 'active' if active_tab == 'new' }}" href="{{ url_for('new_tasks') }}">
+                    Новые
+                    <span class="badge bg-primary rounded-pill">{{ task_counts.new }}</span>
                 </a>
             </li>
             <li class="nav-item">
-                <a class="nav-link {{ 'active' if active_tab == 'active' }}" href="{{ url_for('active_tasks') }}">Активные</a>
+                <a class="nav-link {{ 'active' if active_tab == 'active' }}" href="{{ url_for('active_tasks') }}">
+                    Активные
+                    <span class="badge bg-success rounded-pill">{{ task_counts.active }}</span>
+                </a>
             </li>
             <li class="nav-item">
-                <a class="nav-link {{ 'active' if active_tab == 'completed' }}" href="{{ url_for('completed_tasks') }}">Завершенные</a>
+                <a class="nav-link {{ 'active' if active_tab == 'completed' }}" href="{{ url_for('completed_tasks') }}">
+                    Завершенные
+                    <span class="badge bg-secondary rounded-pill">{{ task_counts.completed }}</span>
+                </a>
             </li>
         </ul>
 
