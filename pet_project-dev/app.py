@@ -26,6 +26,25 @@ try:
     from zoneinfo import ZoneInfo  # Python 3.9+
 except ImportError:
     from pytz import timezone as ZoneInfo  # Для старых версий Python
+
+def convert_existing_dates():
+    """Преобразует существующие naive даты в aware (Moscow time)"""
+    with app.app_context():
+        tasks = Todo.query.all()
+        for task in tasks:
+            if task.deadline and task.deadline.tzinfo is None:
+                task.deadline = make_aware(task.deadline)
+            if task.created_at and task.created_at.tzinfo is None:
+                task.created_at = make_aware(task.created_at)
+            if task.started_at and task.started_at.tzinfo is None:
+                task.started_at = make_aware(task.started_at)
+            if task.completed_at and task.completed_at.tzinfo is None:
+                task.completed_at = make_aware(task.completed_at)
+            if task.updated_at and task.updated_at.tzinfo is None:
+                task.updated_at = make_aware(task.updated_at)
+        
+        db.session.commit()
+        print("Преобразованы naive даты в aware (Moscow time)")
     
 # Функция для получения счетчиков задач
 def get_task_counts():
@@ -45,9 +64,21 @@ def get_moscow_time():
     try:
         return datetime.now(ZoneInfo("Europe/Moscow"))
     except Exception:
-        # Для старых версий Python с pytz
         import pytz
-        return datetime.now(pytz.timezone("Europe/Moscow"))
+        return pytz.timezone("Europe/Moscow").localize(datetime.now())
+    
+# Обновленная функция для преобразования naive datetime в aware
+def make_aware(dt):
+    """Преобразует naive datetime в aware (Moscow time)"""
+    if dt is None:
+        return None
+    if dt.tzinfo is None:
+        try:
+            return dt.replace(tzinfo=ZoneInfo("Europe/Moscow"))
+        except Exception:
+            import pytz
+            return pytz.timezone("Europe/Moscow").localize(dt)
+    return dt
 
 # Класс задачи
 class Todo(db.Model):
@@ -60,6 +91,34 @@ class Todo(db.Model):
     completed_at = db.Column(db.DateTime) # Поле когда задача завершена
     updated_at = db.Column(db.DateTime)  # Поле когда задачу отредактировали
     is_edited = db.Column(db.Boolean, default=False)  # Флаг редактирования
+    deadline = db.Column(db.DateTime)  # дедлайн задачи
+    
+    @property
+    def aware_deadline(self):
+        return make_aware(self.deadline) if self.deadline else None
+        
+    @property
+    def is_deadline_soon(self):
+        """Проверяет, наступает ли дедлайн в течение дня"""
+        if not self.deadline:
+            return False
+            
+        deadline = self.aware_deadline
+        now = get_moscow_time()
+        time_left = deadline - now
+        
+        # Проверяем, что дедлайн в будущем и осталось менее 24 часов
+        return time_left.total_seconds() > 0 and time_left.total_seconds() <= 24 * 3600
+        
+    @property
+    def is_deadline_overdue(self):
+        """Проверяет, просрочен ли дедлайн"""
+        if not self.deadline or self.status != 'active':
+            return False
+            
+        deadline = self.aware_deadline
+        now = get_moscow_time()
+        return deadline < now
     
 # Класс тега
 class Tag(db.Model):
@@ -95,7 +154,8 @@ def check_and_upgrade_db():
                 'status': "VARCHAR(20) DEFAULT 'new'",
                 'started_at': "DATETIME",
                 'updated_at': "DATETIME",
-                'is_edited': "BOOLEAN DEFAULT FALSE"
+                'is_edited': "BOOLEAN DEFAULT FALSE",
+                'deadline': "DATETIME"
             }
             
             for col, col_type in required_columns.items():
@@ -145,9 +205,25 @@ def new_tasks():
     if request.method == "POST":
         task = request.form.get("task")
         tags = request.form.get("tags", "").strip()
+        deadline_str = request.form.get("deadline")  # Получаем дедлайн из формы
+        
+        # Парсим дедлайн если он указан
+        deadline = None
+        if deadline_str:
+            try:
+                deadline = datetime.strptime(deadline_str, '%Y-%m-%dT%H:%M')
+            except ValueError:
+                pass
+        
         if task:
             # Создание новой задачи
-            new_todo = Todo(task=task, tags=tags, status='new', created_at=get_moscow_time())
+            new_todo = Todo(
+                task=task, 
+                tags=tags, 
+                status='new', 
+                created_at=get_moscow_time(),
+                deadline=deadline  # Устанавливаем дедлайн
+            )
             db.session.add(new_todo)
             
             # Обработка тегов задачи
@@ -281,6 +357,19 @@ def edit_task(id):
             db_tag = Tag(name=tag, usage_count=1, color=random_color())
             db.session.add(db_tag)
             all_tags[tag] = db_tag
+            
+    # Получаем и парсим дедлайн из формы
+    deadline_str = request.form.get('deadline')
+    deadline = None
+    if deadline_str:
+            try:
+                # Преобразуем строку в datetime и делаем aware
+                naive_deadline = datetime.strptime(deadline_str, '%Y-%m-%dT%H:%M')
+                deadline = make_aware(naive_deadline)  # Преобразуем в aware
+            except ValueError:
+                pass
+    # Обновляем дедлайн
+    todo.deadline = deadline
     
     todo.tags = ','.join(new_tags)
     db.session.commit()
@@ -294,7 +383,7 @@ def edit_task(id):
         return jsonify({'status': 'error', 'message': 'Текст задачи не может быть пустым'}), 400
     
     # Обновление задачи если были изменения    
-    if new_task != todo.task or new_tags != old_tags:
+    if new_task != todo.task or new_tags != old_tags or deadline != todo.deadline:
         todo.task = new_task
         todo.tags = new_tags_str
         now = get_moscow_time()
@@ -311,6 +400,11 @@ def edit_task(id):
                     color = db_tag.color if db_tag else '#6c757d'
                     tags_html += f'<a href="{url_for("filter_by_tag", tag=tag_name)}" class="tag-badge me-1 mb-1" style="background-color: {color}; color: white;">{tag_name}</a>'
         
+        logging.info(f"Editing task {id}")
+        logging.info(f"Old deadline: {todo.deadline}, New deadline: {deadline}")
+        logging.info(f"Old tags: {old_tags}, New tags: {new_tags}")
+        logging.info(f"Old task: {todo.task}, New task: {new_task}")
+        
         db.session.commit()
         
         return jsonify({
@@ -319,7 +413,10 @@ def edit_task(id):
             'updated_at': now.strftime('%d.%m.%Y %H:%M'),
             'is_edited': True,
             'new_text': new_task,
-            'tags_html': tags_html
+            'tags_html': tags_html,
+            'deadline_formatted': format_date_filter(deadline) if deadline else "не определен",
+            'is_deadline_soon': todo.is_deadline_soon,
+            'is_deadline_overdue': todo.is_deadline_overdue
         })
         
     return jsonify({'status': 'no_changes'})
@@ -416,6 +513,48 @@ def get_tags():
     tags = Tag.query.filter(Tag.name.ilike(f'%{search}%')).order_by(Tag.usage_count.desc()).limit(10).all()
     return jsonify([tag.name for tag in tags])
 
+# Новый API для проверки просроченных задач
+@app.route("/api/check-deadlines")
+def check_deadlines():
+    now = get_moscow_time()
+    # Находим активные задачи с дедлайном
+    active_tasks = Todo.query.filter(
+        Todo.status == STATUS_ACTIVE,
+        Todo.deadline.isnot(None)
+    ).all()
+    
+    overdue_tasks = []
+    soon_tasks = []
+    
+    for task in active_tasks:
+        deadline = make_aware(task.deadline)
+        time_left = deadline - now
+        seconds_left = time_left.total_seconds()
+        
+        if seconds_left < 0:
+            # Просроченная задача
+            overdue_tasks.append({
+                'id': task.id,
+                'task': task.task,
+                'deadline': deadline.strftime('%d.%m.%Y %H:%M'),
+                'overdue_minutes': int(-seconds_left / 60)
+            })
+        elif seconds_left <= 24 * 3600:  # 24 часа
+            # Дедлайн скоро наступит (менее 24 часов)
+            soon_tasks.append({
+                'id': task.id,
+                'task': task.task,
+                'deadline': deadline.strftime('%d.%m.%Y %H:%M'),
+                'hours_left': int(seconds_left / 3600)
+            })
+    
+    return jsonify({
+        'overdue_count': len(overdue_tasks),
+        'overdue_tasks': overdue_tasks,
+        'soon_count': len(soon_tasks),
+        'soon_tasks': soon_tasks
+    })
+
 # Маршрут для обновления счетчиков тегов
 @app.route("/refresh-tags")
 def refresh_tags():
@@ -453,5 +592,7 @@ if __name__ == "__main__":
     with app.app_context():
         # Проверка и обновление структуры БД
         check_and_upgrade_db()
+        # Преобразование существующих дат
+        convert_existing_dates()
      # Запуск Flask приложения
     app.run(host="0.0.0.0", port=5000, debug=True)
